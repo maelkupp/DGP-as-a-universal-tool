@@ -15,7 +15,7 @@ The goal of the project was to investigate whether the **Binary Linear Programmi
 
 This repository includes the following:
 
-- A **reduction from BLP to SAT**, based on a method developed by J.P. Warners (correctly cited in the accompanying report).
+- A **reduction from BLP to SAT**, based on a method developed by J.P. Warners (J.P. Warners. A linear-time transformation of linear inequalities into conjunctive normal form. Information Processing Letters).
 - A **reduction from BLP to DGP**, developed during this project.
 - Several **variants** of the BLP → DGP reduction, each implemented and available for exploration.
 - A **dynamic programming algorithm** that solves the Subset Sum problem, created as part of an attempt to model BLP using DGP techniques.
