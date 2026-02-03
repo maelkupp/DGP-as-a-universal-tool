@@ -1,0 +1,15 @@
+# DGP instance in .dat format for dgp.mod
+# written by blp2dgp_opt.py on 260123162901
+# this graph is a DGP encoding of the BLP instance
+#   found in mael_test_1_blp2dgp.opb
+param n := 76;
+param nlits := 3;
+param Kdim := 1;
+param : E : c I :=
+  1 2  4.000 0  #[A,B]
+  2 3  2.000 0  #[B,E]
+  3 4  1.000 0  #[E,D]
+  4 1  1.000 0  #[D,A]
+  2 5  2.000 0  #[B,C]
+  3 5  3.000 0  #[D,C]
+;

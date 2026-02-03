@@ -1,0 +1,100 @@
+import re
+import gurobipy as gp
+from gurobipy import GRB
+import sys
+
+def parse_dgp_dat_file(dat_file):
+    edges = []
+    n = 0
+    in_edges = False
+
+    vertex_names = {}  # id (0-based) -> name
+
+    with open(dat_file, "r") as f:
+        for line in f:
+            if line.strip().startswith("param : E : c I :="):
+                in_edges = True
+                continue
+
+            if in_edges:
+                if line.strip().startswith(";"):
+                    break
+
+                # match edge data
+                m = re.match(r"\s*(\d+)\s+(\d+)\s+([0-9eE\+\-\.]+)", line)
+                if not m:
+                    continue
+
+                i, j, dist = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                i0, j0 = i - 1, j - 1
+                edges.append((i0, j0, dist))
+                n = max(n, i, j)
+
+                # extract names after # [name_i,name_j]
+                name_match = re.search(r"#\s*\[([^\]]+)\]", line)
+                if name_match:
+                    names = name_match.group(1).split(",")
+                    if len(names) == 2:
+                        name_i, name_j = names[0].strip(), names[1].strip()
+                        vertex_names.setdefault(i0, name_i)
+                        vertex_names.setdefault(j0, name_j)
+
+    return edges, n, vertex_names
+
+
+def min_err_dgp1_gurobi(edges, n, time_limit=90, mip_gap=0.01):
+    m = gp.Model("MinErrDGP1")
+    m.Params.OutputFlag = 0
+
+    m.Params.TimeLimit = time_limit
+    m.Params.MIPGap    = mip_gap
+    m.Params.Heuristics = 0.7
+    m.Params.PoolSearchMode = 2
+    m.Params.PoolSolutions  = 10
+
+    x = m.addVars(n, lb=-GRB.INFINITY, ub=GRB.INFINITY, name="x")
+    
+    #add the following constraints to speed up processing by removing symmetries
+    m.addConstr(x[0] == 0) #fix the first vertex at 0 to remove translation symmetry
+    m.addConstr(x[1] >= 0) #fix the second vertex to be non-negative to remove reflection symmetrys
+
+
+    err = {}
+    for idx, (i, j, d) in enumerate(edges):
+        print(f"Looking at edge idx {idx} between vertex {i} and vertex {j} with distance {d} \n", file=sys.stderr)
+        diff = m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY)
+        m.addConstr(diff == x[i] - x[j])
+
+        absdiff = m.addVar(lb=0)
+        m.addGenConstrAbs(absdiff, diff)
+
+        aux = m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY)
+        m.addConstr(aux == absdiff - d)
+
+        err[idx] = m.addVar(lb=0)
+        m.addGenConstrAbs(err[idx], aux)
+
+    m.setObjective(gp.quicksum(err[idx] for idx in err), GRB.MINIMIZE)
+    m.optimize()
+
+    if m.Status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.SUBOPTIMAL):
+        embedding = [x[i].X for i in range(n)]
+        total_err = sum(abs(abs(embedding[i] - embedding[j]) - d)
+                        for i, j, d in edges)
+        return total_err, embedding
+    else:
+        return None, None
+
+
+if __name__ == "__main__":
+
+    edges, n, vertex_names = parse_dgp_dat_file(sys.argv[1])
+    ub, emb = min_err_dgp1_gurobi(edges, n, time_limit=60, mip_gap=0.05)
+
+    print(f"Upper bound objective = {ub:.6f}", file=sys.stderr)
+    for i, xi in enumerate(emb):
+        name = vertex_names.get(i, f"v{i}")
+        print(f"  {name:12s} (id {i}) = {xi:.6f}", file=sys.stderr)
+
+    #return just the upper bound value to the orchestrating script
+    print(f"{ub:.6f}")
