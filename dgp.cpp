@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <numeric>
 
+constexpr double PI = 3.14159265358979323846;
+
 
 std::tuple<std::vector<Edge>, std::set<int>, std::unordered_map<int, std::string>> parse_dgp_instance_dat_file(std::string dgp_dat_file_path){
     std::vector<Edge> edges;
@@ -190,7 +192,6 @@ std::unordered_map<int, std::vector<Adjacency>> create_adjacency_list_from_edges
     }
 
     for(const Edge& edge: edges){
-        edge.display();
         if(edge.directed){
             adj_list[edge.u].push_back(Adjacency(edge.v, edge.weight, true));
             adj_list[edge.v].push_back(Adjacency(edge.u, edge.weight, false));
@@ -381,7 +382,7 @@ std::vector<std::vector<std::vector<Edge>>> get_cycle_basis(std::vector<std::vec
 
 
 // ------------ computing the MinErrDGP of the cycle basis using DP ------------------
-double DP_cycle_error(std::vector<double> cycle) {
+double DP_cycle_error_real(std::vector<double> cycle) {
     int n = cycle.size();
     if (n == 0) return 0.0;
 
@@ -418,10 +419,43 @@ double DP_cycle_error(std::vector<double> cycle) {
 
     // compute resulting error
     double p_val = best * resolution;
-    return std::abs(2 * p_val - S);
+    double cycle_error = std::abs(2 * p_val - S);
+    std::cerr << "Got additional error from cycle " << cycle_error << "\n";
+    return cycle_error;
 }
 
-double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>& cycle_basis){
+
+double DP_cycle_error(std::vector<double>& cycle) {
+    int n = cycle.size();
+    if (n == 0) return 0.0;
+
+    int S = std::accumulate(cycle.begin(), cycle.end(), 0);
+
+    std::vector<char> dp(S + 1, 0);
+    dp[0] = 1;
+
+    for (int w : cycle) {
+        for (int j = S - w; j >= 0; --j) {
+            if (dp[j]) dp[j + w] = 1;
+        }
+    }
+
+    int target = S / 2;
+    int best = 0;
+
+    for (int p = 0; p <= S; ++p) {
+        if (!dp[p]) continue;
+        if (std::abs(p - target) < std::abs(best - target)) {
+            best = p;
+        }
+    }
+
+    double cycle_error {std::abs(2 * best - S)};
+    std::cerr << "Got additional error on a cycle " << cycle_error << "\n";
+    return cycle_error;
+}
+
+double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>& cycle_basis, bool real_edge_weights){
     //function takes a cycle basis of our graph and computes the minimum error of this basis, acting as a lower bound for the true minimum error
     double tot_err {0.0};
 
@@ -431,10 +465,15 @@ double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>
             for(const Edge& e: cycle){
                 cycle_values.push_back(e.weight);
             }
-
-            tot_err += DP_cycle_error(cycle_values);
+            
+            if (real_edge_weights){
+                tot_err += DP_cycle_error_real(cycle_values);
+            }else{
+                tot_err += DP_cycle_error(cycle_values);
+            }
         }
     }
+
     return tot_err;
 }
 //function that displays a 1 dimension embedding of a DGP instance
@@ -638,6 +677,149 @@ double cheap_rotation_minErrDGP1_UB(const std::vector<Edge>& edges, const std::v
 }
 
 
+double local_obj_abs(
+    double x,
+    int i_vertex_id_1based,
+    const std::unordered_map<int, std::vector<Adjacency>>& adj_list,
+    const std::vector<double>& t
+){
+    double sum = 0.0;
+    const auto& nbrs = adj_list.at(i_vertex_id_1based);
+    for (const auto& nbr : nbrs) {
+        int j = nbr.neighbourId - 1;   // 0-based index into t
+        sum += std::abs(std::abs(x - t[j]) - nbr.dist);
+    }
+    return sum;
+}
+
+double coefficient_descent_on_line(const std::vector<Edge>& edges,
+    const std::unordered_map<int, std::vector<Adjacency>>& adj_list,
+    std::vector<double>& t){
+    auto global_error = [&](const std::vector<double>& tt){
+        double E = 0.0;
+        for (const auto& e : edges) {
+            E += std::abs(std::abs(tt[e.u - 1] - tt[e.v - 1]) - e.weight);
+        }
+        return E;
+    };
+
+    double E0 = global_error(t);
+    std::cerr << "Initial 1D error: " << E0 << "\n";
+
+    const double lambda = 0.5;
+    const int sweeps = 10;
+
+    for (int sweep = 0; sweep < sweeps; ++sweep) {
+        // Jacobi-style buffer for stability
+        std::vector<double> t_new = t;
+
+        for (int i = 0; i < (int)t.size(); ++i) {
+            int vid = i + 1;
+            auto it = adj_list.find(vid);
+            if (it == adj_list.end() || it->second.empty()) continue;
+
+            // Build candidate set: {t_j ± d_ij} plus current t_i
+            std::vector<double> cand;
+            cand.reserve(2 * it->second.size() + 1);
+            cand.push_back(t[i]);
+
+            for (const auto& nbr : it->second) {
+                int j = nbr.neighbourId - 1;
+                double dij = nbr.dist;
+                cand.push_back(t[j] + dij);
+                cand.push_back(t[j] - dij);
+            }
+
+            // Pick best candidate for the TRUE local objective
+            double best_x = cand[0];
+            double best_val = local_obj_abs(best_x, vid, adj_list, t);
+            for (int k = 1; k < (int)cand.size(); ++k) {
+                double val = local_obj_abs(cand[k], vid, adj_list, t);
+                if (val < best_val) {
+                    best_val = val;
+                    best_x = cand[k];
+                }
+            }
+
+            // Damped update
+            t_new[i] = (1.0 - lambda) * t[i] + lambda * best_x; //move part of the way towards the locally optimal position
+            //if we jump all the way we might have strong reactions to conflicting constraints etc
+        }
+
+        t.swap(t_new); // same as t = t_new but faster
+
+        double E = global_error(t);
+        std::cerr << "After sweep: " << E << "\n";
+    }
+
+    double Efinal = global_error(t);
+    std::cerr << "Optimized error: " << Efinal << "\n";
+    return Efinal;
+}
+
+
+static inline double wrap_angle_pi(double theta) {
+    // For line directions in 1D projection, angles are equivalent mod pi
+    // because u and -u define the same line. Keep theta in [0, pi).
+    double pi = PI;
+    theta = std::fmod(theta, pi);
+    if (theta < 0) theta += pi;
+    return theta;
+}
+
+double optimized_rotation_minErrDGP1_UB(
+    const std::vector<Edge>& edges,
+    const std::vector<Point>& points
+){
+    std::cerr << "Computing rotation + 1D coordinate descent UB (multi-angle around theta*)\n";
+
+    // Base angle from your closed form
+    const double theta_star = optimal_rotation(edges, Line(Point(0,0), 1, 0), points);
+
+    // Build adjacency once (independent of angle)
+    auto adj_list = create_adjacency_list_from_edges(edges, (int)edges.size());
+
+    // Small deviations around theta* (in radians). Feel free to tweak.
+    // Here: 0°, ±5°, ±10°, ±15° around theta*.
+    const std::vector<double> deltas = {
+        0.0,
+        PI / 36.0,  -PI / 36.0,   // 5°
+        PI / 18.0,  -PI / 18.0,   // 10°
+        PI / 12.0,  -PI / 12.0    // 15°
+    };
+
+    double best_err = std::numeric_limits<double>::infinity();
+    double best_theta = wrap_angle_pi(theta_star);
+
+    for (double dtheta : deltas) {
+        double theta = wrap_angle_pi(theta_star + dtheta);
+
+        // Project points onto the line direction u = (cos(-theta), sin(-theta))
+        // (equivalently: rotate axis by -theta).
+        const double c = std::cos(-theta);
+        const double s = std::sin(-theta);
+
+        std::vector<double> t(points.size());
+        for (int i = 0; i < (int)points.size(); ++i) {
+            t[i] = points[i].x * c + points[i].y * s;
+        }
+
+        // Run your 1D solver (Jacobi + damping etc.) on this initialization
+        double err = coefficient_descent_on_line(edges, adj_list, t);
+
+        std::cerr << "theta = " << theta
+                  << " (delta " << dtheta << ")"
+                  << " => error = " << err << "\n";
+
+        if (err < best_err) {
+            best_err = err;
+            best_theta = theta;
+        }
+    }
+
+    std::cerr << "Best theta = " << best_theta << " theta star " << theta_star << ", best error = " << best_err << "\n";
+    return best_err;
+}
 
 
 

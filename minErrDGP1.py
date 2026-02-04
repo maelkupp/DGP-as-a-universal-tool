@@ -61,7 +61,7 @@ def min_err_dgp1_gurobi(edges, n, time_limit=90, mip_gap=0.01):
 
     err = {}
     for idx, (i, j, d) in enumerate(edges):
-        print(f"Looking at edge idx {idx} between vertex {i} and vertex {j} with distance {d} \n", file=sys.stderr)
+        print(f"Looking at edge idx {idx} between vertex {i} and vertex {j} with distance {d}", file=sys.stderr)
         diff = m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY)
         m.addConstr(diff == x[i] - x[j])
 

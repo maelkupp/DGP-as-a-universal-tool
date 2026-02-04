@@ -39,11 +39,13 @@ if __name__ == "__main__":
         p = get_edge_density()
         A = get_square_length()
     else:
-        n = 15
-        p = 0.3
+        n = 10
+        p = 0.4
         A = 10.0
 
     N = 20
+    UB_ratios = []
+    time_ratios = []
     print(f"Going to do {N} trials \n")
     for i in range(N):
         # ---- Cheap UB ----
@@ -73,12 +75,19 @@ if __name__ == "__main__":
         cheap_UB_value = float(cheap_UB.stdout.strip())
         Gurobi_UB_value = float(UB_lines[-1].split()[-1])
 
+        UB_ratios.append(cheap_UB_value / Gurobi_UB_value)
+        time_ratios.append(cheap_time / gurobi_time)
+
         print(
             f"Trial {i}: "
             f"Cheap UB = {cheap_UB_value:.6f} "
             f"(time = {cheap_time:.3f}s), "
             f"Gurobi UB = {Gurobi_UB_value:.6f} "
             f"(time = {gurobi_time:.3f}s)\n"
-            f"(ratio = {cheap_UB_value / Gurobi_UB_value:.4f})\n"
+            f"(UB ratio = {cheap_UB_value / Gurobi_UB_value:.4f})\n"
+            f"(time ratio = {cheap_time / gurobi_time:.4f})\n"
         )
 
+    avg_UB_ratio = sum(UB_ratios) / N
+    avg_time_ratio = sum(time_ratios) / N
+    print(f"Average UB ratio (Cheap / Gurobi) over {N} trials: {avg_UB_ratio:.4f}")

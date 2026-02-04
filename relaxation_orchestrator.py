@@ -47,6 +47,8 @@ if __name__ == "__main__":
     for i in range(N):
         if i%10 == 0:
             print(f"test number {i} have {count} / {i} UB >= Relaxation \n")
+
+        
         relax_value = subprocess.run(["relax_gen2Dembedding.exe", str(n), str(p), str(A)],
                     check=True, text=True, capture_output=True)
         values = list(map(float, relax_value.stdout.strip().split(",")))
