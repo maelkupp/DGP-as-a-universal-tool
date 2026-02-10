@@ -93,7 +93,11 @@ void write_edges_to_dat_file(const std::vector<Edge>& edges);
 // ------------- obtained Upper Bounds from geometry ----------
 
 double cheap_rotation_minErrDGP1_UB(const std::vector<Edge>& edges, const std::vector<Point>& points);
-double optimized_rotation_minErrDGP1_UB(const std::vector<Edge>& edges, const std::vector<Point>& points);
+
+//this version is used when we have a 2d embedding of the DGP instance
+double optimized_projection_minErrDGP1_UB(const std::vector<Edge>& edges, const std::vector<Point>& points);
+//this version is used when we have an arbitrary DGP instance, the instance is not embedded in 2D, in this case we will already have the adjacency list
+double optimized_projection_minErrDGP1_UB(const std::vector<Edge>& edges, const std::set<int>& vertex_ids);
 
 
 // ------------ things to do with 2D instances and generating them etc ------------

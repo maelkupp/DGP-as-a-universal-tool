@@ -1,57 +1,50 @@
-import subprocess
 import sys
+import subprocess
 import time
+import re
+import random
 
 
-def get_number_of_vertices():
-    n = -1
-    while n < 1:
-        try:
-            n = int(input("Enter the number of vertices (n > 0): "))
-        except ValueError:
-            print("Invalid input. Please enter a positive integer.")
-    return n
+def generate_dat_graph(filename, n=8, m=12, weight_min=1, weight_max=5):
+    edges = set()
+    while len(edges) < m:
+        i = random.randint(1, n)
+        j = random.randint(1, n)
+        if i != j:
+            edges.add(tuple(sorted((i, j))))
 
-def get_edge_density():
-    p = -1.0
-    while p < 0.0 or p > 1.0:
-        try:
-            p = float(input("Enter the edge density (0.0 <= p <= 1.0): "))
-        except ValueError:
-            print("Invalid input. Please enter a number between 0.0 and 1.0.")
-    return p
+    edges = list(edges)
 
-def get_square_length():
-    A = -1.0
-    while A <= 0.0:
-        try:
-            A = float(input("Enter the square length (A > 0.0): "))
-        except ValueError:
-            print("Invalid input. Please enter a positive number.")
-    return A
+    with open(filename, "w") as f:
+        # header
+        f.write("# DGP instance in .dat format for dgp.mod\n")
+        f.write("# this graph is a DGP encoding of a random instance\n\n")
+
+        # edge list
+        f.write("param : E : c I :=\n")
+
+        for (i, j) in edges:
+            w = random.randint(weight_min, weight_max)
+            f.write(f"  {i} {j}  {w:.3f} 0\n")
+
+        f.write(";\n")
+
 
 if __name__ == "__main__":
-    # Run the relaxation orchestrator script using subprocess
+    graph_filename = "temp_graph.dat"
 
-    #quick if statement for now to speed up processing during testing
-    if len(sys.argv) > 1:
-        n = get_number_of_vertices()
-        p = get_edge_density()
-        A = get_square_length()
-    else:
-        n = 10
-        p = 0.4
-        A = 10.0
-
-    N = 20
+    N = 25
     UB_ratios = []
     time_ratios = []
     print(f"Going to do {N} trials \n")
     for i in range(N):
+        #generate random graph and save to temp_graph.dat
+        generate_dat_graph(graph_filename)
+
         # ---- Cheap UB ----
         t0 = time.perf_counter()
         cheap_UB = subprocess.run(
-            ["cheap_minErrDGP1_UB_from_embedding.exe", str(n), str(p), str(A)],
+            ["cheap_minErrDGP1_UB.exe", graph_filename],
             check=True,
             text=True,
             capture_output=True
@@ -84,9 +77,12 @@ if __name__ == "__main__":
             f"(time = {cheap_time:.3f}s), "
             f"Gurobi UB = {Gurobi_UB_value:.6f} "
             f"(time = {gurobi_time:.3f}s)\n"
-            f"(UB ratio = {cheap_UB_value / Gurobi_UB_value:.4f})\n"
-            f"(time ratio = {cheap_time / gurobi_time:.4f})\n"
         )
+        if Gurobi_UB_value == 0.0:
+            print(f"Gurobi UB is zero {Gurobi_UB_value} for trial {i}, cheap UB value {cheap_UB_value}.\n")
+        else:
+            print(f"(UB ratio = {cheap_UB_value / Gurobi_UB_value:.4f})\n")
+        print(f"(time ratio = {cheap_time / gurobi_time:.4f})\n")
 
     avg_UB_ratio = sum(UB_ratios) / N
     avg_time_ratio = sum(time_ratios) / N

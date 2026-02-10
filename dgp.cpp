@@ -703,13 +703,15 @@ double coefficient_descent_on_line(const std::vector<Edge>& edges,
         return E;
     };
 
-    double E0 = global_error(t);
-    std::cerr << "Initial 1D error: " << E0 << "\n";
+    double prev_E = global_error(t);
+    std::cerr << "Initial 1D error: " << prev_E << "\n";
 
     const double lambda = 0.5;
-    const int sweeps = 10;
+    const double rel_tol = 5e-5;
+    const int max_sweeps = 100;
 
-    for (int sweep = 0; sweep < sweeps; ++sweep) {
+
+    for (int sweep = 0; sweep < max_sweeps; ++sweep) {
         // Jacobi-style buffer for stability
         std::vector<double> t_new = t;
 
@@ -748,8 +750,18 @@ double coefficient_descent_on_line(const std::vector<Edge>& edges,
 
         t.swap(t_new); // same as t = t_new but faster
 
-        double E = global_error(t);
-        std::cerr << "After sweep: " << E << "\n";
+        double curr_E = global_error(t);
+        double rel_impr = std::abs(prev_E - curr_E) / std::max(1.0, prev_E);
+
+        if (rel_impr < rel_tol) {
+            std::cerr << "Converged after " << sweep + 1 << " sweeps.\n";
+            break;
+        }
+
+        prev_E = curr_E;
+
+
+        std::cerr << "After sweep: " << curr_E << "\n";
     }
 
     double Efinal = global_error(t);
@@ -767,32 +779,34 @@ static inline double wrap_angle_pi(double theta) {
     return theta;
 }
 
-double optimized_rotation_minErrDGP1_UB(
+double optimized_projection_minErrDGP1_UB(
     const std::vector<Edge>& edges,
     const std::vector<Point>& points
 ){
     std::cerr << "Computing rotation + 1D coordinate descent UB (multi-angle around theta*)\n";
 
-    // Base angle from your closed form
-    const double theta_star = optimal_rotation(edges, Line(Point(0,0), 1, 0), points);
+  
+    const double theta_init {0.0};
 
     // Build adjacency once (independent of angle)
-    auto adj_list = create_adjacency_list_from_edges(edges, (int)edges.size());
+    auto adj_list = create_adjacency_list_from_edges(edges, edges.size());
 
-    // Small deviations around theta* (in radians). Feel free to tweak.
-    // Here: 0°, ±5°, ±10°, ±15° around theta*.
+    // Small deviations around theta* (in radians). can tweak these variations
+    // Here: 0°, +- 15,30,45,60 around theta_init.
     const std::vector<double> deltas = {
-        0.0,
-        PI / 36.0,  -PI / 36.0,   // 5°
-        PI / 18.0,  -PI / 18.0,   // 10°
-        PI / 12.0,  -PI / 12.0    // 15°
+        PI / 2.0,
+        PI*5.0/12.0, -PI*5.0/12.0, //75
+        PI / 3.0,  -PI / 3.0,   // 60°
+        PI / 4.0,  -PI / 4.0,   // 45°
+        PI / 6.0,  -PI / 6.0,   // 30°
+        PI / 12.0, -PI / 12.0   // 15
     };
 
     double best_err = std::numeric_limits<double>::infinity();
-    double best_theta = wrap_angle_pi(theta_star);
+    double best_theta = wrap_angle_pi(theta_init);
 
     for (double dtheta : deltas) {
-        double theta = wrap_angle_pi(theta_star + dtheta);
+        double theta = wrap_angle_pi(theta_init + dtheta);
 
         // Project points onto the line direction u = (cos(-theta), sin(-theta))
         // (equivalently: rotate axis by -theta).
@@ -807,9 +821,6 @@ double optimized_rotation_minErrDGP1_UB(
         // Run your 1D solver (Jacobi + damping etc.) on this initialization
         double err = coefficient_descent_on_line(edges, adj_list, t);
 
-        std::cerr << "theta = " << theta
-                  << " (delta " << dtheta << ")"
-                  << " => error = " << err << "\n";
 
         if (err < best_err) {
             best_err = err;
@@ -817,12 +828,94 @@ double optimized_rotation_minErrDGP1_UB(
         }
     }
 
-    std::cerr << "Best theta = " << best_theta << " theta star " << theta_star << ", best error = " << best_err << "\n";
+    std::cerr << "Best theta = " << best_theta << " theta star " << theta_init << ", best error = " << best_err << "\n";
     return best_err;
 }
 
 
+double optimized_projection_minErrDGP1_UB(
+    const std::vector<Edge>& edges,
+    const std::set<int>& vertex_ids
+){
+    //this function creates a UB for the MinerrDGP1 using random scatterings of the points onto the line and then performing the coefficient descent algorithm
+    // Build adjacency list once
+    auto adj_list = create_adjacency_list_from_edges(edges, edges.size());
 
+    const int n = static_cast<int>(vertex_ids.size());
+    if (n == 0) return 0.0;
+
+    // ---- estimate a reasonable scale from the edges ----
+    double avg_d = 0.0;
+    for (const auto& e : edges) avg_d += e.weight;
+    avg_d /= std::max(1, (int)edges.size());
+
+    const int num_trials = 10;          // number of random restarts
+    const double spread = 2.0 * avg_d;  // scale of random scattering
+    const double noise = 0.1 * avg_d;   // small perturbation
+
+    double best_error = std::numeric_limits<double>::infinity();
+
+    // Convert vertex_ids to vector for indexing
+    std::vector<int> vids(vertex_ids.begin(), vertex_ids.end());
+
+    for (int trial = 0; trial < num_trials; ++trial) {
+
+        // ---- initialize t ----
+        std::vector<double> t(n, 0.0);
+
+        // Pick a random root
+        int root_idx = Random::get(0, n - 1);
+        int root_vid = vids[root_idx];
+        t[root_idx] = 0.0;
+
+        // Simple BFS-style initialization
+        std::unordered_map<int, bool> visited;
+        visited[root_vid] = true;
+
+        std::vector<int> stack;
+        stack.push_back(root_vid);
+
+        while (!stack.empty()) {
+            int u = stack.back();
+            stack.pop_back();
+
+            int u_idx = std::distance(vids.begin(),
+                                      std::find(vids.begin(), vids.end(), u));
+
+            for (const auto& nbr : adj_list[u]) {
+                int v = nbr.neighbourId;
+                if (visited[v]) continue;
+
+                int v_idx = std::distance(vids.begin(),
+                                          std::find(vids.begin(), vids.end(), v));
+
+                // random sign
+                double sign = (Random::get(0, 1) == 0) ? -1.0 : 1.0;
+                t[v_idx] = t[u_idx] + sign * nbr.dist;
+
+                // small noise to avoid symmetry lock-in
+                t[v_idx] += Random::get<double>(-noise, noise);
+
+                visited[v] = true;
+                stack.push_back(v);
+            }
+        }
+
+        // For disconnected vertices, scatter randomly
+        for (int i = 0; i < n; ++i) {
+            if (!visited[vids[i]]) {
+                t[i] = Random::get<double>(-spread, spread);
+            }
+        }
+
+        // ---- run the 1D solver ----
+        double err = coefficient_descent_on_line(edges, adj_list, t);
+
+        best_error = std::min(best_error, err);
+    }
+
+    return best_error;
+}
 
 
 // ------------------------------ all of the things relating to the relaxations come here ---------------------------

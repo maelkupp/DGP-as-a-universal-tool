@@ -7,7 +7,7 @@ import gurobipy as gp
 from gurobipy import GRB
 import re
 from scipy.optimize import minimize
-from blp2dgp import readOpb, reduce_blp_2_dgp, writeDat
+from reductions.blp2dgp import readOpb, reduce_blp_2_dgp, writeDat
 ### GLOBAL CONSTANTS
 myEps = 1e-2
 minVal = -10
