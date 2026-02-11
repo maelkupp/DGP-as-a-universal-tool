@@ -2,6 +2,8 @@ import re
 import gurobipy as gp
 from gurobipy import GRB
 import sys
+import math
+
 
 def parse_dgp_dat_file(dat_file):
     edges = []
@@ -41,6 +43,57 @@ def parse_dgp_dat_file(dat_file):
 
     return edges, n, vertex_names
 
+def min_err_dgp1_slab_gurobi(edges, n, epsilon, time_limit=90, mip_gap=0.01):
+    #solves the minErrDGP1 problem with a slab of height epsilon, solving a 2D instance on a restricted domain of the plane of height epsilon
+    m = gp.Model("MinErrDGP1")
+    m.Params.OutputFlag = 0
+
+    m.Params.TimeLimit = time_limit
+    m.Params.MIPGap    = mip_gap
+    m.params.Heuristics = 0.7
+    m.Params.PoolSearchMode = 2
+    m.Params.PoolSolutions  = 10
+
+    x = m.addVars(n, 2, lb=-GRB.INFINITY, ub=GRB.INFINITY, name="x")
+    #fix the first coordinate vertex at 0 to remove translation symmetry
+    for i in range(n):
+        m.addConstr(x[i, 1] <= epsilon) #restrict to a slab of height epsilon
+
+
+    m.addConstr(x[0, 0] == 0)
+    m.addConstr(x[0, 1] == 0) #also fix the second coordinate of the first vertex to remove some symmetries
+    m.addConstr(x[1, 0] >= 0) #fix the second vertex to be non-negative in the second coordinate to remove reflection symmetry across the x-axis
+    m.addConstr(x[1, 1] >= 0) #fix the second vertex to be non-negative in the second coordinate to remove reflection symmetry across the x-axis
+
+    err = {}
+    for idx, (i, j, d) in enumerate(edges):
+        diff_x = m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY)
+        diff_y = m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY)
+        m.addConstr(diff_x == x[i, 0] - x[j, 0])
+        m.addConstr(diff_y == x[i, 1] - x[j, 1])
+
+        absdiff_x = m.addVar(lb=0)
+        absdiff_y = m.addVar(lb=0)
+        m.addGenConstrAbs(absdiff_x, diff_x)
+        m.addGenConstrAbs(absdiff_y, diff_y)
+
+        aux = m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY)
+        m.addConstr(aux == (x[i,0] - x[j,0])*(x[i,0] - x[j,0])+(x[i,1] - x[j,1])*(x[i,1] - x[j,1]) - d*d)
+
+        err[idx] = m.addVar(lb=0)
+        m.addGenConstrAbs(err[idx], aux)
+
+    m.setObjective(gp.quicksum(err[idx] for idx in err), GRB.MINIMIZE)
+    m.optimize()
+
+    if m.Status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.SUBOPTIMAL):
+        embedding = [(x[i, 0].X, x[i, 1].X) for i in range(n)]
+        total_err = sum(abs(((embedding[i][0] - embedding[j][0]) ** 2 + (embedding[i][1] - embedding[j][1]) ** 2) ** 0.5 - d)
+                        for i, j, d in edges)
+        return total_err, embedding
+    else:
+        return None, None
+    
 
 def min_err_dgp1_gurobi(edges, n, time_limit=90, mip_gap=0.01):
     m = gp.Model("MinErrDGP1")
