@@ -167,7 +167,7 @@ std::vector<std::vector<int>> create_vertex_orderings_for_directed_dgps(
         */
         auto directed_adj_list = get_directed_undirected_adj_list(adj_list, num_vertices);
         std::vector<std::vector<int>> orderings;
-        std::cout << "Create the vertex ordering for each of the " << components.size() << " connected components \n";
+        std::cerr << "Create the vertex ordering for each of the " << components.size() << " connected components \n";
         for(auto& component: components){
             orderings.push_back(create_single_ordering_for_directed_dgps(adj_list, *std::next(component.begin(), 0),directed_adj_list, component.size()));
         }
@@ -228,8 +228,8 @@ void dir_backtrack_place(
     if(index == static_cast<int>(ordering.size())){
         //we have placed all the vertices so we compare the partial error with the best error so far
         if(partial_error < state.best_error){
-            std::cout << "improving the minimum error from " << state.best_error << " to " << partial_error << "\n";
-            std::cout << "This new best embedding is: \n";
+            std::cerr << "improving the minimum error from " << state.best_error << " to " << partial_error << "\n";
+            std::cerr << "This new best embedding is: \n";
             display_1Dembedding(current_embedding, vertex_id_to_name);
             state.best_error = partial_error;
             state.best_embedding = current_embedding;

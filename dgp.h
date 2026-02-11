@@ -25,7 +25,7 @@ struct Edge{
         if(directed){
             directed_string = "Directed";
         }
-        std::cout << directed_string << "Edge between vertices u: " << u << " and v: " << v << " of weight " << weight << "\n";
+        std::cerr << directed_string << "Edge between vertices u: " << u << " and v: " << v << " of weight " << weight << "\n";
     }
 
 };
@@ -47,7 +47,7 @@ struct Adjacency {
         if(directed){
             directed_string += "Directed";
         }
-        std::cout << directed_string << " Neighbour with id " << neighbourId << ", " <<  dist << " away \n";
+        std::cerr << directed_string << " Neighbour with id " << neighbourId << ", " <<  dist << " away \n";
     }
 
 };
@@ -75,7 +75,7 @@ std::vector<std::vector<Edge>> get_spanning_forest(std::unordered_map<int, std::
 
 std::vector<std::vector<std::vector<Edge>>> get_cycle_basis(std::vector<std::vector<Edge>>& spanning_forest_edges, std::unordered_map<int, std::vector<Adjacency>>& adj_list);
 
-double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>& cycle_basis);
+double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>& cycle_basis, bool real_edge_weightsDP_cycle_error);
 
 void display_1Dembedding(std::unordered_map<int, double> embedding, std::unordered_map<int, std::string> vertex_id_2_name);
 
@@ -94,6 +94,10 @@ void write_edges_to_dat_file(const std::vector<Edge>& edges);
 
 double cheap_rotation_minErrDGP1_UB(const std::vector<Edge>& edges, const std::vector<Point>& points);
 
+//this version is used when we have a 2d embedding of the DGP instance
+double optimized_projection_minErrDGP1_UB(const std::vector<Edge>& edges, const std::vector<Point>& points);
+//this version is used when we have an arbitrary DGP instance, the instance is not embedded in 2D, in this case we will already have the adjacency list
+double optimized_projection_minErrDGP1_UB(const std::vector<Edge>& edges, const std::set<int>& vertex_ids);
 
 
 // ------------ things to do with 2D instances and generating them etc ------------

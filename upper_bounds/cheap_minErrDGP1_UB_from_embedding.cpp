@@ -25,7 +25,11 @@ int main(int argc, char* argv[]){
 
     double UB_error = cheap_rotation_minErrDGP1_UB(edges, points);
     std::cerr << "Got cheap UB: " << UB_error << "\n";
-    std::cout << UB_error;
+    //std::cout << UB_error;
+
+    double UB_optimized_error = optimized_projection_minErrDGP1_UB(edges, points);
+    std::cerr << "Optimized error " << UB_optimized_error << "\n";
+    std::cout << UB_optimized_error;
 
     return 0;
 }
