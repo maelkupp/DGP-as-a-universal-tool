@@ -3,7 +3,7 @@ import gurobipy as gp
 from gurobipy import GRB
 import sys
 import math
-
+import random
 
 def parse_dgp_dat_file(dat_file):
     edges = []
@@ -58,6 +58,7 @@ def min_err_dgp1_slab_gurobi(edges, n, epsilon, time_limit=90, mip_gap=0.01):
     #fix the first coordinate vertex at 0 to remove translation symmetry
     for i in range(n):
         m.addConstr(x[i, 1] <= epsilon) #restrict to a slab of height epsilon
+        m.addConstr(x[i, 1] >= 0) #restrict to a slab of height epsilon
 
 
     m.addConstr(x[0, 0] == 0)
@@ -139,6 +140,17 @@ def min_err_dgp1_gurobi(edges, n, time_limit=90, mip_gap=0.01):
         return None, None
 
 
+def generate_random_cycle_dat_file(filename, n=5, weight_min=1, weight_max=5):
+    with open(filename, "w") as f:
+        f.write("# DGP instance in .dat format for dgp.mod\n")
+        f.write("# this graph is a cycle on n vertices with random edge weights\n\n")
+
+        f.write("param : E : c I :=\n")
+        for i in range(n):
+            j = (i + 1) % n
+            w = random.randint(weight_min, weight_max)
+            f.write(f"  {i+1} {j+1}  {w:.3f} 0\n")
+        f.write(";\n")
 if __name__ == "__main__":
 
     edges, n, vertex_names = parse_dgp_dat_file(sys.argv[1])

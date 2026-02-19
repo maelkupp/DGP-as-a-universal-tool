@@ -74,11 +74,3 @@ if __name__ == "__main__":
 
 
 
-"""
-
-formalize reduction proof (Mael)
-think about how to turn BP into BPB (both of us)
-find adversarial instances where Gurobi is slow and perhaps we are not (Mael)
-fill in the proofs in the current LaTeX "notes" document (Mael)
-start writing a journal paper (Leo)
-"""

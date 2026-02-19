@@ -310,6 +310,122 @@ std::unordered_set<std::pair<int, int>, PairHash> create_tree_edge_set(const std
     return tree_edges_set;
 }
 
+// Helper: find one simple cycle via DFS
+bool dfs_find_cycle(
+    int u,
+    int parent,
+    std::unordered_map<int, std::vector<Adjacency>>& adj,
+    std::unordered_map<int, bool>& visited,
+    std::unordered_map<int, int>& parent_map,
+    std::vector<int>& cycle_nodes
+) {
+    visited[u] = true;
+    for (auto& adjInfo : adj[u]) {
+        int v = adjInfo.neighbourId;
+        // Skip the parent edge
+        if (v == parent) continue;
+        if (!visited[v]) {
+            parent_map[v] = u;
+            if (dfs_find_cycle(v, u, adj, visited, parent_map, cycle_nodes)) {
+                return true;
+            }
+        } else {
+            // found a back edge -> cycle
+            // reconstruct cycle from u back to v
+            int cur = u;
+            cycle_nodes.push_back(v);
+            while (cur != v) {
+                cycle_nodes.push_back(cur);
+                cur = parent_map[cur];
+            }
+            cycle_nodes.push_back(v); // close cycle
+            return true; 
+        }
+    }
+    return false;
+}
+
+std::vector<std::vector<std::vector<Edge>>> get_greedy_edge_disjoint_cycles(
+    std::vector<std::vector<Edge>>& spanning_forest_edges,
+    std::unordered_map<int, std::vector<Adjacency>>& adj_list
+) {
+    // result per component
+    std::vector<std::vector<std::vector<Edge>>> all_disjoint_cycles;
+
+    // We will keep a working adjacency list we can modify
+    auto working_adj = adj_list;
+
+    // For each component's tree (so we preserve spanning forest structure)
+    for (const auto& tree : spanning_forest_edges) {
+        // We grab only the edges that remain in the working adjacency list
+        std::vector<std::vector<Edge>> comp_cycles;
+        
+        while (true) {
+            // We need to find any cycle in the current graph
+            std::unordered_map<int, bool> visited;
+            std::unordered_map<int, int> parent_map;
+            std::vector<int> cycle_nodes;
+
+            bool found_cycle = false;
+            // Try DFS from every node that still has neighbors
+            for (auto &kv : working_adj) {
+                int start = kv.first;
+                if (!visited[start] && !working_adj[start].empty()) {
+                    parent_map[start] = -1;
+                    if (dfs_find_cycle(start, -1, working_adj, visited, parent_map, cycle_nodes)) {
+                        found_cycle = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found_cycle) break; // no more cycles
+
+            // cycle_nodes now holds the cycle vertex sequence (start == end)
+            // We convert consecutive vertices into edges
+            std::vector<Edge> cycle_edges;
+            for (size_t i = 0; i + 1 < cycle_nodes.size(); ++i) {
+                int a = cycle_nodes[i];
+                int b = cycle_nodes[i + 1];
+
+                // find adjacency to get weight
+                auto &neighbors = working_adj[a];
+                double w = 0;
+                for (auto &adj : neighbors) {
+                    if (adj.neighbourId == b) {
+                        w = adj.dist;
+                        break;
+                    }
+                }
+                cycle_edges.push_back(Edge(a, b, w, 0));
+            }
+
+            // Add this cycle to the component
+            comp_cycles.push_back(cycle_edges);
+
+            // Remove edges of this cycle from the working adjacency list
+            for (const auto &e : cycle_edges) {
+                int u = e.u;
+                int v = e.v;
+                // remove from both adjacency lists
+                auto &listU = working_adj[u];
+                listU.erase(std::remove_if(listU.begin(), listU.end(),
+                    [&](const Adjacency &adj){ return adj.neighbourId == v; }),
+                    listU.end());
+                auto &listV = working_adj[v];
+                listV.erase(std::remove_if(listV.begin(), listV.end(),
+                    [&](const Adjacency &adj){ return adj.neighbourId == u; }),
+                    listV.end());
+            }
+        }
+
+        if (!comp_cycles.empty()) {
+            all_disjoint_cycles.push_back(comp_cycles);
+        }
+    }
+
+    return all_disjoint_cycles;
+}
 
 std::vector<std::vector<std::vector<Edge>>> get_cycle_basis(std::vector<std::vector<Edge>>& spanning_forest_edges, std::unordered_map<int, std::vector<Adjacency>>& adj_list){
     //this function will take a spanning tree and the adjacency list of the entire graph and will return a cycle basis of the entire graph
@@ -320,6 +436,7 @@ std::vector<std::vector<std::vector<Edge>>> get_cycle_basis(std::vector<std::vec
    for(const auto& spanning_tree_edges: spanning_forest_edges){
     //preprocessing for each tree in the forest
     std::unordered_set<std::pair<int, int>, PairHash> tree_edge_set = create_tree_edge_set(spanning_tree_edges);
+    if(spanning_tree_edges.size() == 0) continue;
     std::unordered_map<int, std::vector<Adjacency>> tree_adj_list = create_adjacency_list_from_edges(spanning_tree_edges, spanning_tree_edges.size());
     auto [parent_edge_tree, depth_tree] = get_parent_and_depth_maps_DFS(tree_adj_list, spanning_tree_edges[0].u); // get an arbitrary vertex id that is in the tree from the first element in the vector
     std::vector<std::vector<Edge>> component_cycle_basis;
@@ -374,7 +491,10 @@ std::vector<std::vector<std::vector<Edge>>> get_cycle_basis(std::vector<std::vec
                 component_cycle_basis.push_back(cycle);
         }
     }
-    cycle_basis.push_back(component_cycle_basis);
+    if(component_cycle_basis.size() > 0){
+        cycle_basis.push_back(component_cycle_basis);
+
+    }
 
    }
    return cycle_basis;
@@ -425,7 +545,7 @@ double DP_cycle_error_real(std::vector<double> cycle) {
 }
 
 
-double DP_cycle_error(std::vector<double>& cycle) {
+double DP_cycle_error(const std::vector<double>& cycle) {
     int n = cycle.size();
     if (n == 0) return 0.0;
 
@@ -455,14 +575,14 @@ double DP_cycle_error(std::vector<double>& cycle) {
     return cycle_error;
 }
 
-double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>& cycle_basis, bool real_edge_weights){
+double compute_minErrDGP_cycle(std::vector<std::vector<std::vector<Edge>>>& cycle_basis, bool real_edge_weights){
     //function takes a cycle basis of our graph and computes the minimum error of this basis, acting as a lower bound for the true minimum error
     double tot_err {0.0};
 
-    for(const auto& connected_component_cycle_basis: cycle_basis){
-        for(const auto& cycle: connected_component_cycle_basis){
+    for(const auto& connected_component_cycle: cycle_basis){
+        for(const auto& e_disjoint_cycle: connected_component_cycle){
             std::vector<double> cycle_values {};
-            for(const Edge& e: cycle){
+            for(const Edge& e: e_disjoint_cycle){
                 cycle_values.push_back(e.weight);
             }
             
@@ -476,6 +596,7 @@ double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>
 
     return tot_err;
 }
+
 //function that displays a 1 dimension embedding of a DGP instance
 void display_1Dembedding(std::unordered_map<int, double> embedding, std::unordered_map<int, std::string> vertex_id_2_name){
     for(const auto& [vertex_id, pos]: embedding){
@@ -1020,3 +1141,55 @@ double rotation_projection_relax(const std::vector<Edge>& edges, std::vector<Poi
     }
     return tot_err;
 }
+
+
+//this function takes a cycle basis and the associated error (weight) of that cycle, the point is to obtain the best possible error
+//by greedily selecting the cycle that are edge disjoint and have the greatest error
+double greedy_packing_cycle_err(const std::vector<std::vector<std::vector<Edge>>>& cycle_basis,
+    const std::vector<std::vector<double>>& cycle_errors){
+
+    //first flatten the cycle into 1dimension
+    std::vector<WeightedCycle> all_cycles;
+    for(int i=0; i<static_cast<int>(cycle_basis.size()); ++i){
+        for(int j=0; j<static_cast<int>(cycle_basis[i].size()); ++j){
+            all_cycles.push_back({cycle_basis[i][j], cycle_errors[i][j]});
+        }
+    }
+
+    //sort in decreasing order by weight (to have the cycles contributing to the error the most at the beginning)
+    std::sort(all_cycles.begin(), all_cycles.end(),
+            [](const WeightedCycle& a, const WeightedCycle& b) {
+                return a.error > b.error;
+            });
+
+    std::set<std::pair<int,int>> used_edges;
+    double total_lb = 0.0;
+
+    for (const auto& cycle : all_cycles) {
+
+        bool disjoint = true;
+
+        for (const Edge& e : cycle.edges) {
+            auto key = std::make_pair(std::min(e.u, e.v),
+                                    std::max(e.u, e.v));
+            if (used_edges.count(key)) {
+                disjoint = false;
+                break;
+            }
+        }
+
+        if (disjoint) {
+            total_lb += cycle.error;
+
+            for (const Edge& e : cycle.edges) {
+                auto key = std::make_pair(std::min(e.u, e.v),
+                                        std::max(e.u, e.v));
+                used_edges.insert(key);
+            }
+        }
+    }
+
+    return total_lb;
+    
+    }
+    

@@ -65,6 +65,12 @@ struct PairHash {
         return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
     }
 };
+
+//struct that allows us to easily pair cycle with their minimum errors (weight) used in the greedy_packing_cycle function to obtain as tight a lower bound as possible
+struct WeightedCycle{
+    std::vector<Edge> edges;
+    double error;
+};
 // -------- functions to create/handle DGP instances ----------
 
 std::tuple<std::vector<Edge>, std::set<int>, std::unordered_map<int, std::string>> parse_dgp_instance_dat_file(std::string file_path);
@@ -75,7 +81,14 @@ std::vector<std::vector<Edge>> get_spanning_forest(std::unordered_map<int, std::
 
 std::vector<std::vector<std::vector<Edge>>> get_cycle_basis(std::vector<std::vector<Edge>>& spanning_forest_edges, std::unordered_map<int, std::vector<Adjacency>>& adj_list);
 
-double compute_minErrDGP_cycle_basis(std::vector<std::vector<std::vector<Edge>>>& cycle_basis, bool real_edge_weightsDP_cycle_error);
+//this function gets cycles in a gready way using dfs
+std::vector<std::vector<std::vector<Edge>>> get_greedy_edge_disjoint_cycles(
+    std::vector<std::vector<Edge>>& spanning_forest_edges,
+    std::unordered_map<int, std::vector<Adjacency>>& adj_list
+);
+
+double compute_minErrDGP_cycle(std::vector<std::vector<std::vector<Edge>>>& cycle_basis, bool real_edge_weightsDP_cycle_error);
+double DP_cycle_error(const std::vector<double>& cycle);
 
 void display_1Dembedding(std::unordered_map<int, double> embedding, std::unordered_map<int, std::string> vertex_id_2_name);
 
@@ -111,4 +124,6 @@ std::vector<Edge> generate_edges_across_points(std::vector<Point>& points, doubl
 
 double simple_projection_relax(const std::vector<Edge>&, const std::vector<Point>& points);
 double rotation_projection_relax(const std::vector<Edge>&, std::vector<Point>& points);
+double greedy_packing_cycle_err(const std::vector<std::vector<std::vector<Edge>>>& cycle_basis,
+    const std::vector<std::vector<double>>& cycle_errors);
 #endif
