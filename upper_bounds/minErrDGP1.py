@@ -43,7 +43,7 @@ def parse_dgp_dat_file(dat_file):
 
     return edges, n, vertex_names
 
-def min_err_dgp1_slab_gurobi(edges, n, epsilon, time_limit=90, mip_gap=0.01):
+def min_err_dgp1_slab_gurobi(edges, n, epsilon, time_limit=240, mip_gap=0.01):
     #solves the minErrDGP1 problem with a slab of height epsilon, solving a 2D instance on a restricted domain of the plane of height epsilon
     m = gp.Model("MinErrDGP1")
     m.Params.OutputFlag = 0
@@ -96,7 +96,7 @@ def min_err_dgp1_slab_gurobi(edges, n, epsilon, time_limit=90, mip_gap=0.01):
         return None, None
     
 
-def min_err_dgp1_gurobi(edges, n, time_limit=90, mip_gap=0.01):
+def min_err_dgp1_gurobi(edges, n, time_limit=240, mip_gap=0.01):
     m = gp.Model("MinErrDGP1")
     m.Params.OutputFlag = 0
 

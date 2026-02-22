@@ -5,6 +5,7 @@ import subprocess
 import time
 import numpy as np
 import pandas as pd
+import tempfile
 
 
 def get_number_of_vertices():
@@ -90,48 +91,59 @@ if __name__ == "__main__":
 
     n_values = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]
     density_levels = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.6]
-    REPS = 20
+    REPS = 15
 
     results = []
     for n in n_values:
+        print(f"Running experiments for n={n} \n")
         for density in density_levels:
             m = int(density * n*(n-1)/2)
 
             for weight_range in [(1,5), (5,10), (10,50)]:
 
                 for rep in range(REPS):
+                    print(f"rep {rep} for n={n}, density={density}, weight_range={weight_range} \n")
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".dat") as tmp:
+                        filename = tmp.name
 
-                    generate_dat_graph("temp_graph.dat",
-                                    n, m,
-                                    weight_range[0],
-                                    weight_range[1])
+                        generate_dat_graph(filename,
+                                        n, m,
+                                        weight_range[0],
+                                        weight_range[1])
 
-                    # --- Cycle relaxation ---
-                    proc1 = subprocess.run(
-                        ["relaxation\\minErrDGP1_cycles_LB.exe",
-                        "temp_graph.dat", "0"],
-                        check=True, text=True, capture_output=True)
-                    cycle_val, cycle_time = map(float, proc1.stdout.split())
+                        # --- Cycle relaxation ---
+                        proc1 = subprocess.run(
+                            ["relaxation\\minErrDGP1_cycles_LB.exe",
+                            filename, "0"],
+                            check=True, text=True, capture_output=True)
+                        cycle_val, cycle_time = map(float, proc1.stdout.split())
 
-                    # --- Greedy relaxation ---
-                    proc2 = subprocess.run(
-                        ["relaxation\\greedy_packing_cycle_LB.exe",
-                        "temp_graph.dat"],
-                        check=True, text=True, capture_output=True)
-                    greedy_val, greedy_time = map(float, proc2.stdout.split())
+                        # --- Greedy relaxation ---
+                        proc2 = subprocess.run(
+                            ["relaxation\\greedy_packing_cycle_LB.exe",
+                            filename],
+                            check=True, text=True, capture_output=True)
+                        greedy_val, greedy_time = map(float, proc2.stdout.split())
 
-                    results.append({
-                        "n": n,
-                        "m": m,
-                        "density": density,
-                        "weight_min": weight_range[0],
-                        "weight_max": weight_range[1],
-                        "cycle_val": cycle_val,
-                        "greedy_val": greedy_val,
-                        "cycle_time": cycle_time,
-                        "greedy_time": greedy_time,
-                        "greedy_better": greedy_val > cycle_val
-                    })
+                        if n < 40:
+                            proc3 = subprocess.run(
+                                [sys.executable, "upper_bounds\\minErrDGP1.py", filename],
+                                check=True, text=True, capture_output=True)
+                            ub_val = float(proc3.stdout.strip().splitlines()[-1])
+
+                        results.append({
+                            "n": n,
+                            "m": m,
+                            "density": density,
+                            "weight_min": weight_range[0],
+                            "weight_max": weight_range[1],
+                            "cycle_val": cycle_val,
+                            "greedy_val": greedy_val,
+                            "UB_val": ub_val if n < 40 else None,
+                            "cycle_time": cycle_time,
+                            "greedy_time": greedy_time,
+                            "greedy_better": greedy_val > cycle_val
+                        })
 
     df = pd.DataFrame(results)
     df.to_csv("experiment_results.csv", index=False)
