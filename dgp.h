@@ -30,6 +30,7 @@ struct Edge{
 
 };
 
+
 struct Adjacency {
     int neighbourId;
     double dist;
