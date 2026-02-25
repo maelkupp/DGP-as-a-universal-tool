@@ -1,6 +1,6 @@
 #include "dgp_bnb.h"
 #include "random.h"
-#include "gurobi_c++.h"
+//#include "gurobi_c++.h"
 #include <tuple>
 #include <vector>
 #include <iostream>
@@ -474,7 +474,7 @@ double DP_cycle_error_with_fixed_signs(
     dp[0] = 1;
 
     for(auto w: free_weights){
-        for(int j=S-w; j>=0; -j){
+        for(int j=S-w; j>=0; --j){
             if (dp[j]) dp[j + w] = 1;
         }
     }
@@ -806,25 +806,125 @@ std::vector<std::vector<double>> build_incidence_matrix(
     const std::vector<IndexedEdge>& edges,
     int n
 ){
-    std::vector<std::vector<double>> B;
+
+    int m = edges.size();
+
+    std::vector<std::vector<double>> B(
+        m,
+        std::vector<double>(n, 0.0)
+    );
+
+    for (int e = 0; e < m; ++e) {
+        int u = edges[e].u - 1;  // assuming 1-based input
+        int v = edges[e].v - 1;
+
+        B[e][u] = 1.0;
+        B[e][v] = -1.0;
+    }
+
     return B;
 }
 
-void precompute_embedding_solver(
-    const std::vector<IndexedEdge>& edges,
-    int n
-){
 
-}
 
 //wrapper that does all the steps in computing the exact embedding that minimizes the error for a fixed sign, is what guarantees the correctness of the BnB
 double solve_exact_embedding(
-    const std::vector<int>& fixed_signs
+    const std::vector<int>& fixed_signs,
+    const std::vector<IndexedEdge>& edges,
+    int n_vertices
 ){
-    double d {0.0};
-    return d;
+    return 0.0;
 }
+/*
+double solve_exact_embedding(
+    const std::vector<int>& fixed_signs,
+    const std::vector<IndexedEdge>& edges,
+    int n_vertices
+) {
+    try {
 
+        GRBEnv env(true);
+        env.set(GRB_IntParam_OutputFlag, 0);
+        env.start();
+
+        GRBModel model(env);
+
+        int m = edges.size();
+
+        // ------------------------
+        // Variables x
+        // ------------------------
+
+        std::vector<GRBVar> x(n_vertices);
+
+        for (int i = 0; i < n_vertices; ++i) {
+            x[i] = model.addVar(
+                -GRB_INFINITY,
+                GRB_INFINITY,
+                0.0,
+                GRB_CONTINUOUS
+            );
+        }
+
+        // Fix translation
+        model.addConstr(x[0] == 0.0);
+
+        // ------------------------
+        // Slack variables t_e
+        // ------------------------
+
+        std::vector<GRBVar> t(m);
+
+        for (int e = 0; e < m; ++e) {
+            t[e] = model.addVar(
+                0.0,
+                GRB_INFINITY,
+                1.0, // objective coefficient
+                GRB_CONTINUOUS
+            );
+        }
+
+        model.update();
+
+        // ------------------------
+        // Constraints
+        // ------------------------
+
+        for (int e = 0; e < m; ++e) {
+
+            int u = edges[e].u - 1;
+            int v = edges[e].v - 1;
+
+            double b = fixed_signs[e] * edges[e].weight;
+
+            // t_e >= (x_u - x_v) - b
+            model.addConstr(
+                t[e] >= x[u] - x[v] - b
+            );
+
+            // t_e >= -(x_u - x_v) + b
+            model.addConstr(
+                t[e] >= -x[u] + x[v] + b
+            );
+        }
+
+        model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
+
+        model.optimize();
+
+        if (model.get(GRB_IntAttr_Status) != GRB_OPTIMAL) {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        return model.get(GRB_DoubleAttr_ObjVal);
+
+    } catch (GRBException& e) {
+        std::cerr << "Gurobi error: "
+                  << e.getMessage() << "\n";
+        return std::numeric_limits<double>::infinity();
+    }
+}
+*/
 int select_branching_edge(
     const std::vector<int>& fixed_signs
 ){
@@ -834,38 +934,41 @@ int select_branching_edge(
             return i;
         }
     }
+    return -1;
 }
 
 void branch_and_bound(
-    BNBNode& node,
     const std::vector<CycleID>& i_cycles,
-    const std::vector<IndexedEdge> i_edges
+    const std::vector<IndexedEdge>& i_edges,
+    std::vector<int>& fixed_signs,
+    double& bestUB,
+    int num_vertices,
+    int depth
 ){
-    double LB = compute_cycle_packing_LB(i_cycles, node.fixed_signs, i_edges);
-    if(LB >= node.bestUB){
+    double LB = compute_cycle_packing_LB(i_cycles, fixed_signs, i_edges);
+    if(LB >= bestUB){
         return;
     }
-    
-    if(node.depth == static_cast<int>(i_edges.size())){
-        double err = solve_exact_embedding(node.fixed_signs);
-        if(err < node.bestUB){
-            node.bestUB = err;
+
+    int eid = select_branching_edge(fixed_signs);
+
+    if(eid == -1){
+        //have no more nodes to select, we have decided on all of them
+        double err = solve_exact_embedding(fixed_signs, i_edges, num_vertices);
+        if(err < bestUB){
+            bestUB = err;
         }
         return;
     }
 
-    int eid = select_branching_edge(node.fixed_signs);
-
-    ++node.depth;
     //branch 1
-    node.fixed_signs[eid] = 1;
-    branch_and_bound(node, i_cycles, i_edges);
+    fixed_signs[eid] = 1;
+    branch_and_bound(i_cycles, i_edges, fixed_signs, bestUB, num_vertices, depth-1);
     //branch2
-    node.fixed_signs[eid] = -1;
-    branch_and_bound(node, i_cycles, i_edges);
+    fixed_signs[eid] = -1;
+    branch_and_bound(i_cycles, i_edges, fixed_signs, bestUB, num_vertices, depth+1);
 
-    --node.depth;
-    node.fixed_signs[eid] = 0;
+    fixed_signs[eid] = 0;
 }
 
 
@@ -882,12 +985,11 @@ double solve_minerr_dgp1(const std::string& filename){
     std::vector<double> error_cycle_basis = get_cycle_basis_error(i_cycles, i_edges); //precompute the error of each cycle in the basis, error_cycle_basis[i] has error of indexed_cycles[i], maybe dont need it right now
 
     
-    BNBNode root;
-    root.fixed_signs = std::vector<int>(static_cast<int>(edges.size()), 0);
-    root.depth = 0;
-    root.bestUB = optimized_projection_minErrDGP1_UB(edges, vertex_ids, adj_list);
+    std::vector<int> fixed_signs = std::vector<int>(static_cast<int>(edges.size()), 0); // all the edges are free
+    int depth = 0;
+    double bestUB = optimized_projection_minErrDGP1_UB(edges, vertex_ids, adj_list); //obtain a tight UB with our heuristic
 
 
-    branch_and_bound(root, i_cycles, i_edges);
-    return root.bestUB;
+    branch_and_bound(i_cycles, i_edges, fixed_signs, bestUB, vertex_ids.size(), 0);
+    return bestUB;
 }

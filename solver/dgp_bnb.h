@@ -191,10 +191,6 @@ std::vector<std::vector<double>> build_incidence_matrix(
     const std::vector<IndexedEdge>& edges,
     int n);
 
-//precompute B^\top B factorization as we will need it to compute the closed form minimization problem at each leaf
-void precompute_embedding_solver(
-    const std::vector<IndexedEdge>& edges,
-    int n);
 
 //wrapper that does all the steps in computing the exact embedding that minimizes the error for a fixed sign, is what guarantees the correctness of the BnB
 double solve_exact_embedding(
@@ -203,13 +199,6 @@ double solve_exact_embedding(
 
 // 5 ----------------------- Branch and Bound Engine -----------------------
 
-//the node structure for our BnB
-struct BNBNode {
-    std::vector<int> fixed_signs; // size m
-    int depth;
-    double bestUB;
-};
-
 //selects the edge we will branch on, for now keep it simple, will improve it later on (edges in most cycles, edge in largest error cycle)
 int select_branching_edge(
     const std::vector<int>& fixed_signs
@@ -217,9 +206,11 @@ int select_branching_edge(
 
 //the recursive function for our branch and bound
 void branch_and_bound(
-    BNBNode& node,
     const std::vector<CycleID>& i_cycles,
-    const std::vector<IndexedEdge> i_edges
+    const std::vector<IndexedEdge>& i_edges,
+     std::vector<int>& fixed_signs,
+    double& bestUB,
+    int depth
 );
 
 //solver wrapper, will see what the exact signature for this function is in bit
