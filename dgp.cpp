@@ -1191,5 +1191,5 @@ double greedy_packing_cycle_err(const std::vector<std::vector<std::vector<Edge>>
 
     return total_lb;
     
-    }
+}
     

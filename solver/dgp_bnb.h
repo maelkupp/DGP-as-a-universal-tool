@@ -7,7 +7,21 @@
 #include <iostream>
 #include <set>
 
-// 0 ---------------------- Structs used ------------------------------------------------------\
+// 0 ---------------------- Structs used ------------------------------------------------------
+constexpr double PI = 3.14159265358979323846;
+
+
+class Point{
+    public:
+        double x;
+        double y;
+        //defualt constructor and constructor
+        Point(): x(0), y(0) {}
+        Point(double x, double y): x(x), y(y) {}
+        std::string display() const;
+
+};
+
 
 struct Edge{
     int u; //id of 1st vertex so if there is a directed edge this is always the source node
@@ -64,6 +78,25 @@ struct Adjacency {
 
 };
 
+// struct that allows me to hash a pair of integers
+struct PairHash {
+    std::size_t operator()(const std::pair<int,int>& p) const {
+        return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
+    }
+};
+
+//struct that allows us to easily pair cycle with their minimum errors (weight) used in the greedy_packing_cycle function to obtain as tight a lower bound as possible
+struct WeightedCycle{
+    std::vector<Edge> edges;
+    double error;
+};
+
+struct WeightedCycleID{
+    int cycle_idx;
+    double error;
+    std::vector<int> edge_ids;
+};
+
 // 1 --------------- Graph + Preprocessing -----------------
 
 //reads a dat file and return a tuple  (vector of edges, set of vertex ids, map from vertex ids -> vertex names)
@@ -104,6 +137,7 @@ std::vector<CycleID> convert_cycles_to_edge_ids(
 // 2 ---------------- Relaxation + Lower Bound system ---------------------
 
 //obtains the minimum error of a cycle using DP
+// should implement the version for real edge weights shortly, that is also super important so my solver can do both real & integer edge weights
 double DP_cycle_error(const std::vector<double>& cycle);
 
 //performs DP programming on a cycle to obtain the minimum error but some edge orientations are fixed, minimizes only over free edge signs
@@ -135,12 +169,16 @@ double coefficient_descent_on_line(
 //heuristic MinErrDGP solver, provides a tight upper bound to the error quickly, call the coefficient gradient descent function
 double optimized_projection_minErrDGP1_UB(
     const std::vector<Edge>& edges,
-    const std::set<int>& vertex_ids);
+    const std::set<int>& vertex_ids,
+    std::unordered_map<int, std::vector<Adjacency>>& adj_list
+
+);
 
 //a wrapper for our heuristic defined just above
 double compute_initial_UB(
     const std::vector<Edge>& edges,
-    const std::set<int>& vertex_ids);
+    const std::set<int>& vertex_ids
+);
 
 
 
@@ -169,6 +207,7 @@ double solve_exact_embedding(
 struct BNBNode {
     std::vector<int> fixed_signs; // size m
     int depth;
+    double bestUB;
 };
 
 //selects the edge we will branch on, for now keep it simple, will improve it later on (edges in most cycles, edge in largest error cycle)
@@ -178,8 +217,10 @@ int select_branching_edge(
 
 //the recursive function for our branch and bound
 void branch_and_bound(
-    BNBNode& node
+    BNBNode& node,
+    const std::vector<CycleID>& i_cycles,
+    const std::vector<IndexedEdge> i_edges
 );
 
 //solver wrapper, will see what the exact signature for this function is in bit
-double solve_minerr_dgp1();
+double solve_minerr_dgp1(const std::string& filename);
