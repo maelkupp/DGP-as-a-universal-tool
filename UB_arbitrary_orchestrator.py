@@ -44,7 +44,7 @@ if __name__ == "__main__":
         # ---- Cheap UB ----
         t0 = time.perf_counter()
         cheap_UB = subprocess.run(
-            ["cheap_minErrDGP1_UB.exe", graph_filename],
+            ["upper_bounds//cheap_minErrDGP1_UB", graph_filename],
             check=True,
             text=True,
             capture_output=True
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         # ---- Gurobi UB ----
         t0 = time.perf_counter()
         Gurobi_UB = subprocess.run(
-            [sys.executable, "minErrDGP1.py", "temp_graph.dat"],
+            [sys.executable, "upper_bounds//minErrDGP1.py", "temp_graph.dat"],
             check=True,
             text=True,
             capture_output=True
