@@ -131,36 +131,11 @@ def normalize_blp(blp_instance):
     for i in Ax:
         norm_Axi, norm_b, norm_rel = normalizing_single_constraint(Ax[i], b[i], relation[i])
 
-        if norm_rel == "=":
-            # 1. ∑ aᵢ·xᵢ ≤ b
-            Ax_norm[new_index] = dict(norm_Axi)
-            rel_norm[new_index] = "<="
-            b_norm[new_index] = norm_b
-            new_index += 1
-
-            # 2. ∑ (-aᵢ)·xᵢ ≤ -b, with proper literal sign flipping
-            flipped_Ax = {}
-            flipped_b = -norm_b
-            for var, coeff in norm_Axi.items():
-                flipped_coeff = -coeff
-                if flipped_coeff < 0:
-                    #print('landed here')
-                    flipped_coeff = abs(flipped_coeff)
-                    var = -var
-                    flipped_b += flipped_coeff
-                flipped_Ax[var] = flipped_coeff
-                #print(f"here, flipped_Ax: {flipped_Ax}")
-            Ax_norm[new_index] = flipped_Ax
-            rel_norm[new_index] = "<="
-            b_norm[new_index] = flipped_b
-            new_index += 1
-
-        else:
-            # Otherwise, just store the constraint as-is
-            Ax_norm[new_index] = norm_Axi
-            rel_norm[new_index] = norm_rel
-            b_norm[new_index] = norm_b
-            new_index += 1
+        # Otherwise, just store the constraint as-is
+        Ax_norm[new_index] = norm_Axi
+        rel_norm[new_index] = norm_rel
+        b_norm[new_index] = norm_b
+        new_index += 1
     
     return (Ax_norm, rel_norm, b_norm, var)
 
@@ -204,7 +179,8 @@ def reduce_blp_2_dgp(blp_instance):
 
     (Ax, b) = multiply_blp_n(Ax, b, 5)
     for index in range(len(Ax)):
-        print(f"{Ax[index]} <= {b[index]}")
+        t_rel = rel[index]
+        print(f"{Ax[index]} {t_rel} {b[index]}")
     max_var = max(var) # here we obtain the number of literals in our BLP instance
     nconstraints = len(Ax) #the number of DGP contraints we have to map to
 
@@ -310,7 +286,7 @@ def reduce_blp_2_dgp(blp_instance):
 
         ############ ENCODING THE BUFFER ##########################################
         print(f"b: {b[index]}")
-        if b[index] > 0:
+        if b[index] > 0 and rel[index] == "<=":
             l = math.floor(math.log2(b[index]))+1 #obtain the floor of log base 2  + 1 of our bound to encode the buffer
             VL[vertex_id] = "R_{}^{}".format(0, index)
             LV[VL[vertex_id]] = vertex_id
@@ -409,6 +385,9 @@ def reduce_blp_2_dgp(blp_instance):
             edges_to_add.append((LV["A_{}^{}".format(max_var+l+1, index)], LV["R_{}^{}".format(l,index)], 2**(l-1) + 1, 0))
             edges_to_add.append((LV["R_{}^{}".format(l, index)], LV["S_{}^{}".format(l,index)], 2**(l-1), 0))
             edges_to_add.append((LV["S_{}^{}".format(l, index)], LV["T^{}".format(index)], 0, 0))
+        elif b[index] > 0 and rel[index] == "==":
+            #if the bound is positive and we have an equality constraint we do not add a buffer, we simply add a 0 weight edge from the final partial sum vertex to the target vertex to correctly encode the equality constraint
+            edges_to_add.append((LV["P_{}^{}".format(max_var, index)], LV["T^{}".format(index)], 0, 0))
         else:
             #if the bound is negative this will force the error,
             # if the bound is 0 this will correctly force the P_n vertex to be at the P_0 vertex meaning the sum did not extend
